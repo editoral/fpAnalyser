@@ -2,53 +2,166 @@ from imp import reload
 import numpy as np
 import re
 import math
+import os
+import time
 
 def act():
 	p = Parser()
 	p.parseFile()
 	return p
-
-def act2(firstFP):
+#simplified for comparision of thwo fingerprints use this to test
+def act2(firstFP, secondFP, rotationAngle, rotationSteps, coordTreshold, vectorMatchTreshold):
 	np.set_printoptions(threshold=1000000)
 	a = FPAnalyzer()
-	a.compare(firstFP,1)
+	a.setValues(rotationAngle, rotationSteps, coordTreshold, vectorMatchTreshold)
+	if a.compare(firstFP,secondFP):
+		print("same fingerprint")
+	else:
+		print("different fingerprint")
 	#return a.applyRotation([1,1],90)
 
+#simplified to calculate a Matrix and prints the success and returns the matching
+def act3(rotationAngle, rotationSteps, coordTreshold, vectorMatchTreshold):
+	a = FPAnalyzer()
+	a.setValues(rotationAngle, rotationSteps, coordTreshold, vectorMatchTreshold)
+	matrix = a.calculateMatchingMatrix()
+	print(matrix[1])
+	return matrix
+
+#use this function to calculate a matrix over all fingerprints and write them to the output Folder
+#It doesn't overwrite nothing because it creates Folders based on the current Timestamp
+def buildMatrix(rotationAngle, rotationSteps, coordTreshold, vectorMatchTreshold):
+	a = FPAnalyzer()
+	a.setValues(rotationAngle, rotationSteps, coordTreshold, vectorMatchTreshold)
+	#result = a.calculateMatchingMatrix()
+	result = [[1,4,2],[10,11,14],[20,28,29]]
+	currOutput = "C:/Users/Marc/SkyDrive/BFH2014/Biometrie/Kursaufgabe/fpAnalyser/output/" + str(time.time())
+	if not os.path.exists(currOutput):
+		os.makedirs(currOutput)
+	fParams = open(currOutput + "/params.txt" ,'w+')
+	fSucess = open(currOutput + "/matches.txt" ,'w+')
+	fFail = open(currOutput + "/nonMatches.txt" ,'w+')
+	fAll = open(currOutput + "/all.txt" ,'w+')
+	fSucess.write(str(result[1]))
+	fFail.write(str(result[2]))
+	fAll.write(str(result[0]))
+	s = "Rotation: " + str(rotationAngle)
+	s = s + " Rotate steps: " + str(rotationSteps)
+	s = s + " Coordinate treshold: " + str(coordTreshold)
+	s = s + " Nr of matches required: " + str(vectorMatchTreshold)
+	fParams.write(s)
+
+#Only use these Functions:
+#	setValue() to initiate
+#	calculateMatchingMatrix() to calculate a Matrix with all FP matches. use only if you have a LOT of time
+#	
 class FPAnalyzer:
 
 	def __init__(self):
 		self.p = Parser()
 		self.p.parseFile()
-		self.rotationAngle = 45
+		self.rotationAngle = 1
 		self.rotationSteps = 1
-		self.coordTreshold = 3
-		self.minuMatchTreshold = 5
+		self.coordTreshold = 10
+		self.vectorMatchTreshold = 5
 
-	def setValues(self, rotationAngle, rotationSteps, coordTreshold):
+	#sets the Parameters.
+	#until which angle of rotation does the algorithm try in which iteration steps?
+	#How large can be de differences of the coordinates from the Minutiae in the Vectors
+	#How many matches have to be found until it is considered the same fingerprint?
+	def setValues(self, rotationAngle, rotationSteps, coordTreshold, vectorMatchTreshold):
 		self.rotationAngle = rotationAngle
 		self.rotationSteps = rotationSteps
 		self.coordTreshold = coordTreshold
+		self.vectorMatchTreshold = vectorMatchTreshold
+
+	#Calcualtes a matching Matrix based on the parameters over all fingerprints.
+	#be aware that the average execution time will be computed as follows as all FP are matched:
+	# (60*(60-1) / 2) * 100000 ^ rotationSteps
+	#so prepare to wait for a looooong time
+	def calculateMatchingMatrix(self):
+		nrFPTemp = len(self.p.headers)
+		toMatch = []
+		for i in range(0,nrFPTemp):
+			for c in range(0,nrFPTemp):
+				toMatch.append([i, c])
+		toMatch = self.removeDupicateEntries(toMatch,nrFPTemp)
+		return self.dispatchComparision(toMatch)
 
 
+
+	#Just executes 100000 ^ rotationSteps operations to calculate if a fingerprint is the same as another
+	#Compares two fingerprints based on the parameters from setValues and returns a boolean wheter they are the same
 	def compare(self,firstFP, secondFP):
 		matrix = self.buildVectorMatrix(firstFP)
 		matrix2 = self.buildVectorMatrix(secondFP)
-		self.comparision(matrix,matrix2)
-		#print(matrix)
-		
+		matches = self.comparision(matrix,matrix2, firstFP, secondFP)
+		#realMatches = self.evaluateMatches(matches,matrix,matrix2,firstFP,secondFP)
+		print("count real matches")
+		print(len(matches))
+		if len(matches) > self.vectorMatchTreshold:
+			return True
+		else:
+			return False
 
-	def comparision(self, matrix, matrix2):
+
+	def evaluateMatches(self, matches, matrix, matrix2, firstFP, secondFP):
+		minutiae = self.p.headers[firstFP].minutiae
+		minutiae2 = self.p.headers[secondFP].minutiae
+		realMatches = []
+		for match in matches:
+			vector = matrix[match[0]] 
+			vector2 = matrix2[match[1]]
+			isRealMatch = False
+			#print(vector[3])
+			minutia0Vec = minutiae[int(vector[2])]
+			minutia1Vec = minutiae[int(vector[3])]
+			minutia0Vec2 = minutiae2[int(vector2[2])]
+			minutia1Vec2 = minutiae2[int(vector2[3])]
+			if self.compareMinutia(minutia0Vec, minutia0Vec2) and self.compareMinutia(minutia1Vec, minutia1Vec2):
+				isRealMatch = True
+			elif self.compareMinutia(minutia0Vec, minutia1Vec2) and self.compareMinutia(minutia1Vec, minutia0Vec2):
+				isRealMatch = True
+			if isRealMatch:
+				realMatches.append(match)
+		return realMatches
+
+
+	def compareMinutia(self, minutia, minutia2):
+		result = False
+		x = int(minutia.xCoord)
+		y = int(minutia.yCoord)
+		typ = int(minutia.minType)
+		x2 = int(minutia2.xCoord)
+		y2 = int(minutia2.yCoord)
+		typ2 = int(minutia2.minType)
+		if abs(x - x2) < self.coordTreshold and abs(y - y2) < self.coordTreshold:
+			if typ == typ2:
+				result = True
+		return result
+
+
+
+	def comparision(self, matrix, matrix2, firstFP, secondFP):
 		mostMatches = 0
-		bestRotation = 0 
+		bestRotation = 0
+		bestMatches = []
 		for rot in drange(0,self.rotationAngle,self.rotationSteps):
 			matches = []
 			counter = 0
 			for vector in matrix:
 				matches.extend(self.findCounterpart(vector, matrix2, rot, counter))
 				counter += 1
-			if len(matches) > mostMatches:
-				mostMatches = len(matches)
+			realMatches = self.evaluateMatches(matches,matrix,matrix2,firstFP,secondFP)
+			if len(realMatches) > mostMatches:
+				mostMatches = len(realMatches)
 				bestRotation = rot
+				print("count matches")
+				print(len(matches))
+				bestMatches = realMatches
+		print("rotation with most matches")
+		print(bestRotation)
+		return bestMatches
 	
 	def findCounterpart(self, vector, matrix, rot, counter):
 		vector = self.applyRotation(vector, rot)
@@ -58,8 +171,22 @@ class FPAnalyzer:
 		matches = []
 		counter2 = 0
 		for vector2 in matrix:
-			dx = round(vector[0]/vector2[0], 2)
-			dy = round(vector[1]/vector2[1], 2)
+			dx = 0
+			dy = 1
+			if vector2[0] == 0:
+				if vector[0] == 0:
+					dx = 0
+				else:
+					dx = 1000
+			else:
+				dx = round(vector[0]/vector2[0], 2)
+			if vector2[1] == 0:
+				if vector[1] == 0:
+					dy = 0
+				else:
+					dy = 10000
+			else:			
+				dy = round(vector[1]/vector2[1], 2)
 			if dx == dy:
 				matches.append([counter, counter2])
 			counter2 += 1
@@ -72,28 +199,26 @@ class FPAnalyzer:
 		rotationMatrix = np.matrix([[cos, -sin],[sin, cos]])
 		vectorMatrix = np.matrix([vec[0], vec[1]])
 		vectorMatrix = vectorMatrix.getT()
-		#vector = vectorMatrix.dot(rotationMatrix)
 		vector = rotationMatrix.dot(vectorMatrix)
 		vec[0] = vector[0]
 		vec[1] = vector[1]
 		return vec
 
-
-
-#	def evaluateRotation(self, matrix, matrix2):
-#		for vector in matrix:
-#			self.searchRotation(vector, matrix)
-#
-	#def evaluateTranslation(self, matrix, matrix2):
-		
-			
-	
-
-
-#	def searchRotation(self vector):
-
-
-	#def searchTranslatedCounterpart
+	def dispatchComparision(self, toMatch):
+		allMatches = []
+		successfulMatches = []
+		failMatechs = []
+		for tryMatch in toMatch:
+			firstFP = tryMatch[0]
+			secondFP = tryMatch[1]
+			result = self.compare(firstFP, secondFP)
+			allMatches.append([firstFP,secondFP,result])
+			if result:
+				successfulMatches.append([firstFP,secondFP])
+			else:
+				failMatechs.append([firstFP,secondFP])
+		returnMatches = [allMatches, successfulMatches, failMatechs]
+		return returnMatches
 
 
 	def buildVectorMatrix(self,fpNumber):
@@ -132,8 +257,18 @@ class FPAnalyzer:
 				index += 1
 		return result
 
-
-		
+	def removeDupicateEntries(self, matrix, length):
+		counter = []
+		index = 0
+		for vector in matrix:
+			first = vector[0]
+			second = vector[1] 
+			valPair = [first, second]
+			valPair2 = [second, first]
+			if valPair not in counter and valPair2 not in counter:
+				counter.append(valPair)
+				index += 1
+		return counter
 
 
 
