@@ -5,6 +5,13 @@ import math
 import os
 import time
 
+
+def demo():
+	act2(26,18,4,1,50,10)
+
+def demo2():
+	buildMatrix(4,1,50,10)
+
 def act():
 	p = Parser()
 	p.parseFile()
@@ -54,7 +61,7 @@ def buildMatrix(rotationAngle, rotationSteps, coordTreshold, vectorMatchTreshold
 #Only use these Functions:
 #	setValue() to initiate
 #	calculateMatchingMatrix() to calculate a Matrix with all FP matches. use only if you have a LOT of time
-#	
+#	compare(fingerprint 1, fingerprint 2) to compare two fingerprints
 class FPAnalyzer:
 
 	def __init__(self):
