@@ -1,0 +1,1 @@
+Rotation: 4 Rotate steps: 1 Coordinate treshold: 50 Nr of matches required: 10

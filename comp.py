@@ -6,6 +6,11 @@ import os
 import time
 
 
+def extTest(fp1, fp2):
+	a = FPAnalyzer()
+	a.setTreshold(4, 30)
+	print(a.extCompare(fp1,fp2))
+
 def demo():
 	act2(26,18,4,1,50,10)
 
@@ -40,8 +45,7 @@ def act3(rotationAngle, rotationSteps, coordTreshold, vectorMatchTreshold):
 def buildMatrix(rotationAngle, rotationSteps, coordTreshold, vectorMatchTreshold):
 	a = FPAnalyzer()
 	a.setValues(rotationAngle, rotationSteps, coordTreshold, vectorMatchTreshold)
-	#result = a.calculateMatchingMatrix()
-	result = [[1,4,2],[10,11,14],[20,28,29]]
+	result = a.calculateMatchingMatrix()
 	currOutput = "C:/Users/Marc/SkyDrive/BFH2014/Biometrie/Kursaufgabe/fpAnalyser/output/" + str(time.time())
 	if not os.path.exists(currOutput):
 		os.makedirs(currOutput)
@@ -71,6 +75,8 @@ class FPAnalyzer:
 		self.rotationSteps = 1
 		self.coordTreshold = 10
 		self.vectorMatchTreshold = 5
+		self.extAngleTreshold = 10
+		self.extMatchTreshold = 20
 
 	#sets the Parameters.
 	#until which angle of rotation does the algorithm try in which iteration steps?
@@ -96,7 +102,6 @@ class FPAnalyzer:
 		return self.dispatchComparision(toMatch)
 
 
-
 	#Just executes 100000 ^ rotationSteps operations to calculate if a fingerprint is the same as another
 	#Compares two fingerprints based on the parameters from setValues and returns a boolean wheter they are the same
 	def compare(self,firstFP, secondFP):
@@ -110,6 +115,113 @@ class FPAnalyzer:
 			return True
 		else:
 			return False
+
+
+#*****************Extension****************************
+
+# I tried to implement the comparefuntion like we discussed in the class but it didn't seem to work
+	def setTreshold(self, angle, match):
+		self.extAngleTreshold = angle
+		self.extMatchTreshold = match
+
+	def extCompare(self, firstFP, secondFP):
+		matrix = self.buildVectorMatrix(firstFP)
+		matrix2 = self.buildVectorMatrix(secondFP)
+		#matches = self.comparision(matrix,matrix2, firstFP, secondFP)	
+		result = self.extComparision(matrix,matrix2)
+		print(len(result))
+		if len(result) > self.extMatchTreshold:
+			return True
+		else:
+			return False
+
+	def extComparision(self,matrix, matrix2):
+		ang1 = self.extGetAngles(matrix)
+		ang2 = self.extGetAngles(matrix2)
+		ang1 = self.extOrderAngles(ang1)
+		ang2 = self.extOrderAngles(ang2)
+		resAng = self.extCompareAngles(ang1,ang2)
+		resAng = self.extApplyTreshold(resAng)
+		return resAng
+
+
+	def extApplyTreshold(self, ang):
+		resAng = []
+		radiantTreshold = math.radians(self.extAngleTreshold)
+		for a in ang:
+			if a[0] < radiantTreshold:
+				resAng.append(a)
+		return resAng
+
+	def extCompareAngles(self,ang1, ang2):
+		diff = len(ang1) - len(ang2)
+		if diff > 0:
+			self.extMatchArrayLength(ang2, ang1)
+		else:
+			self.extMatchArrayLength(ang1, ang2)
+		ang3 = []
+		for i in range(0,len(ang1)):
+			a1 = ang1[i]
+			a2 = ang2[i]
+			diffAng = a1[0] - a2[0]
+			diffAng = math.fabs(diffAng)
+			ang3.append([diffAng, a1[1], a2[1]])
+		return ang3
+
+
+
+	def extMatchArrayLength(self, arr1, arr2):
+		while len(arr1) < len(arr2):
+			del arr2[-1]
+
+	def extOrderAngles(self, angles):
+		ordAngles = []
+		
+		for angle in angles:
+			if not len(ordAngles) == 0:
+				index = 0
+				for ordAng in ordAngles:
+					if self.extSmalerAngel(angle,ordAng):
+						index += 1
+				ordAngles.insert(index, angle)
+			else:
+				ordAngles.append(angle)
+		return ordAngles
+
+	def extSmalerAngel(self, ang1, ang2):
+		result = False
+		if ang1[0] < ang2[0]:
+			result = True
+		return result
+
+	def extGetAngles(self,matrix):
+		angles = []
+		i = 0
+		for vector in matrix:
+			angle = self.extCalculateAngle(vector)
+			angles.append([angle, i])
+			i += 1 
+		return angles
+
+
+
+
+	def extCalculateAngle(self,vector):
+		#vec = np.matrix([vector[0],vector[1]])
+		#vec2 = np.matrix([0, 1])
+		len1 = self.extVectorLength(vector)
+		len2 = 1
+		cos = vector[1] / (len1 * len2)
+		return math.acos(cos)
+
+	def extVectorLength(self, vector):
+		val = vector[0] ** 2 + vector[1] ** 2
+		return math.sqrt(val)
+
+#*******************EndExtension***********************
+
+
+
 
 
 	def evaluateMatches(self, matches, matrix, matrix2, firstFP, secondFP):
